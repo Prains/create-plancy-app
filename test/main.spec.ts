@@ -725,4 +725,16 @@ describe("runCli", () => {
     expect(stderr.output).toContain("Target directory");
     expect(stderr.output).not.toContain("at ensureTargetDirectoryState");
   });
+
+  it("rethrows unexpected internal errors for diagnosability", async () => {
+    await expect(
+      runCli(["demo-app"], {
+        cwd: "/workspace/current",
+        interactive: false,
+        createApp: async () => {
+          throw new Error("unexpected boom");
+        },
+      }),
+    ).rejects.toThrow("unexpected boom");
+  });
 });

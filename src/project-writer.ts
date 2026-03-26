@@ -95,6 +95,18 @@ async function ensureTargetDirectoryState(
   }
 }
 
+async function assertTargetDirectoryStillEmpty(
+  targetDirectory: string,
+): Promise<void> {
+  const existingEntries = await readdir(targetDirectory);
+
+  if (existingEntries.length > 0) {
+    throw new Error(
+      `Target directory ${targetDirectory} must remain empty before scaffolding`,
+    );
+  }
+}
+
 async function copyDirectoryContents(
   sourceDirectory: string,
   destinationDirectory: string,
@@ -279,6 +291,10 @@ export async function writeProject(
     if (targetMode === "missing") {
       await renamePath(stagingDirectory, input.targetDirectory);
       return;
+    }
+
+    if (targetMode === "existing-empty" && !input.overwrite) {
+      await assertTargetDirectoryStillEmpty(input.targetDirectory);
     }
 
     const backupDirectory = await mkdtemp(

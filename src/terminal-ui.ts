@@ -1,3 +1,5 @@
+import { sanitizeTerminalText } from "./terminal-text";
+
 type WriteTarget = {
   write(chunk: string): boolean;
   isTTY?: boolean;
@@ -117,7 +119,7 @@ export function createTerminalUI(stdout: WriteTarget) {
 
     const lines = [
       colorize(true, ANSI_GREEN + ANSI_BOLD, "Project ready"),
-      `Location: ${targetDirectory}`,
+      `Location: ${sanitizeTerminalText(targetDirectory)}`,
       "",
       "Next steps:",
       ...nextStepsBlock.trimEnd().split("\n").map((line) => `  ${line}`),

@@ -18,6 +18,7 @@ import {
   loadTemplateManifest,
   type TemplateManifest,
 } from "./template-contract";
+import { sanitizeTerminalText } from "./terminal-text";
 import { createTerminalUI } from "./terminal-ui";
 
 export type CreateAppInput = {
@@ -102,7 +103,7 @@ async function promptForOverwriteFromStdin(
   try {
     const answer = (
       await rl.question(
-        `Directory ${targetDirectory} is not empty. Overwrite it? [y/N] `,
+        `Directory ${sanitizeTerminalText(targetDirectory)} is not empty. Overwrite it? [y/N] `,
       )
     )
       .trim()
@@ -119,7 +120,7 @@ async function isNonEmptyDirectory(targetDirectory: string): Promise<boolean> {
     const stats = await lstat(targetDirectory);
 
     if (!stats.isDirectory()) {
-      throw new Error(
+      throw new CliError(
         `Target path ${targetDirectory} already exists and is not a directory`,
       );
     }
@@ -270,7 +271,7 @@ export async function runCreateApp(
 
   if (hasExistingContents) {
     if (!options.interactive) {
-      throw new Error(
+      throw new CliError(
         `Target directory ${targetDirectory} must be empty before scaffolding`,
       );
     }

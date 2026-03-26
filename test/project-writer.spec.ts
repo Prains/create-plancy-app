@@ -136,6 +136,51 @@ describe("writeProject", () => {
     );
   });
 
+  it("refuses to replace a target directory that becomes non-empty during staging", async () => {
+    const workspaceRoot = await createTempDirectory("project-writer-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    let injectedLateFile = false;
+
+    await writeTemplateFiles(extractedDirectory, {
+      "package.json": `{"name":"${PACKAGE_NAME_TOKEN}"}`,
+      "README.md": `${APP_NAME_TOKEN}\n`,
+      "src/app.txt": `${APP_NAME_TOKEN}\n`,
+      ".env.example": "DATABASE_URL=file:dev.db\n",
+    });
+    await mkdir(targetDirectory, { recursive: true });
+
+    await expect(
+      writeProject(
+        {
+          extractedDirectory,
+          targetDirectory,
+          manifest: createManifest(),
+          packageName: "demo-app",
+          appName: "Demo App",
+        },
+        {
+          writeFile: async (targetPath, contents) => {
+            if (!injectedLateFile) {
+              injectedLateFile = true;
+              await mkdir(targetDirectory, { recursive: true });
+              await writeFile(
+                path.join(targetDirectory, "late.txt"),
+                "appeared during staging\n",
+              );
+            }
+
+            await writeFile(targetPath, contents);
+          },
+        },
+      ),
+    ).rejects.toThrow(/must remain empty before scaffolding/i);
+
+    expect(await readFile(path.join(targetDirectory, "late.txt"), "utf8")).toBe(
+      "appeared during staging\n",
+    );
+  });
+
   it("restores the previous target directory when overwrite publish fails", async () => {
     const workspaceRoot = await createTempDirectory("project-writer-");
     const extractedDirectory = path.join(workspaceRoot, "starter");

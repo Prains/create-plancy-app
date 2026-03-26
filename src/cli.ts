@@ -112,13 +112,7 @@ export async function runCli(
       return error.exitCode;
     }
 
-    if (!(error instanceof Error)) {
-      throw error;
-    }
-
-    stderr.write(`${error.message}\n`);
-
-    return 1;
+    throw error;
   }
 }
 
