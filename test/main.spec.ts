@@ -13,6 +13,7 @@ import { runCreateApp, createPlancyApp } from "../src/main";
 
 type WriteTarget = {
   write(chunk: string): boolean;
+  isTTY?: boolean;
 };
 
 const tempDirectories: string[] = [];
@@ -27,7 +28,7 @@ afterEach(async () => {
   await Promise.all(tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
-function createBuffer(): { output: string; stream: WriteTarget } {
+function createBuffer(isTTY = false): { output: string; stream: WriteTarget } {
   let output = "";
 
   return {
@@ -35,6 +36,7 @@ function createBuffer(): { output: string; stream: WriteTarget } {
       return output;
     },
     stream: {
+      isTTY,
       write(chunk: string) {
         output += chunk;
 
@@ -95,6 +97,7 @@ describe("runCreateApp", () => {
       packageName: "demo-app",
       appName: "Demo App",
       skipGitInit: false,
+      overwrite: false,
     });
   });
 
@@ -119,7 +122,67 @@ describe("runCreateApp", () => {
       packageName: "plancy-demo",
       appName: "Plancy Demo",
       skipGitInit: false,
+      overwrite: false,
     });
+  });
+
+  it("prompts before overwriting a non-empty target directory in interactive mode", async () => {
+    const workspaceRoot = await createTempDirectory("run-create-overwrite-");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    const createApp = vi.fn(async () => undefined);
+    const promptForOverwrite = vi.fn(async () => true);
+
+    await mkdir(targetDirectory, { recursive: true });
+    await writeFile(path.join(targetDirectory, "keep.txt"), "existing content\n");
+
+    await runCreateApp(
+      {
+        directory: "demo-app",
+        cwd: workspaceRoot,
+        interactive: true,
+      },
+      {
+        createApp,
+        promptForDirectory: vi.fn(),
+        promptForOverwrite,
+      },
+    );
+
+    expect(promptForOverwrite).toHaveBeenCalledWith(targetDirectory);
+    expect(createApp).toHaveBeenCalledWith({
+      targetDirectory,
+      templateVersion: undefined,
+      packageName: "demo-app",
+      appName: "Demo App",
+      skipGitInit: false,
+      overwrite: true,
+    });
+  });
+
+  it("cancels before create flow when overwrite is declined", async () => {
+    const workspaceRoot = await createTempDirectory("run-create-overwrite-");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    const createApp = vi.fn(async () => undefined);
+
+    await mkdir(targetDirectory, { recursive: true });
+    await writeFile(path.join(targetDirectory, "keep.txt"), "existing content\n");
+
+    await expect(
+      runCreateApp(
+        {
+          directory: "demo-app",
+          cwd: workspaceRoot,
+          interactive: true,
+        },
+        {
+          createApp,
+          promptForDirectory: vi.fn(),
+          promptForOverwrite: vi.fn(async () => false),
+        },
+      ),
+    ).rejects.toThrow(/Canceled scaffolding/i);
+
+    expect(createApp).not.toHaveBeenCalled();
   });
 });
 
@@ -140,6 +203,7 @@ describe("createPlancyApp", () => {
         packageName: "demo-app",
         appName: "Demo App",
         skipGitInit: true,
+        overwrite: false,
       },
       {
         resolveRelease: async () => ({
@@ -165,6 +229,89 @@ describe("createPlancyApp", () => {
     );
   });
 
+  it("prints styled progress output when stdout is a TTY", async () => {
+    const workspaceRoot = await createTempDirectory("main-flow-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    const stdout = createBuffer(true);
+    const stderr = createBuffer();
+
+    await writeStarterTemplate(extractedDirectory, { defaultGitInit: false });
+
+    await createPlancyApp(
+      {
+        targetDirectory,
+        packageName: "demo-app",
+        appName: "Demo App",
+        skipGitInit: false,
+        overwrite: false,
+      },
+      {
+        resolveRelease: async () => ({
+          assetName: "starter-web-v1.2.3.tar.gz",
+          downloadUrl: "https://example.com/starter-web-v1.2.3.tar.gz",
+          tagName: "v1.2.3",
+          templateVersion: "1.2.3",
+        }),
+        downloadTemplate: async () => ({
+          extractedDirectory,
+          cleanup: async () => undefined,
+        }),
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      },
+    );
+
+    expect(stderr.output).toBe("");
+    expect(stdout.output).toContain("create-plancy-app");
+    expect(stdout.output).toContain("Resolving starter release");
+    expect(stdout.output).toContain("Writing project files");
+    expect(stdout.output).toContain("Project ready");
+    expect(stdout.output).toContain("bun install");
+  });
+
+  it("prints a warning step in TTY mode when git init fails", async () => {
+    const workspaceRoot = await createTempDirectory("main-flow-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    const stdout = createBuffer(true);
+    const stderr = createBuffer();
+
+    await writeStarterTemplate(extractedDirectory, { defaultGitInit: true });
+
+    await createPlancyApp(
+      {
+        targetDirectory,
+        packageName: "demo-app",
+        appName: "Demo App",
+        skipGitInit: false,
+        overwrite: false,
+      },
+      {
+        resolveRelease: async () => ({
+          assetName: "starter-web-v1.2.3.tar.gz",
+          downloadUrl: "https://example.com/starter-web-v1.2.3.tar.gz",
+          tagName: "v1.2.3",
+          templateVersion: "1.2.3",
+        }),
+        downloadTemplate: async () => ({
+          extractedDirectory,
+          cleanup: async () => undefined,
+        }),
+        tryInitGit: async () => ({
+          ok: false as const,
+          error: "git init failed",
+        }),
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      },
+    );
+
+    expect(stdout.output).toContain("Initializing git repository");
+    expect(stdout.output).toContain("[!]");
+    expect(stderr.output).toBe("Warning: git init failed\n");
+  });
+
   it("skips git initialization when the manifest disables it by default", async () => {
     const workspaceRoot = await createTempDirectory("main-flow-");
     const extractedDirectory = path.join(workspaceRoot, "starter");
@@ -181,6 +328,7 @@ describe("createPlancyApp", () => {
         packageName: "demo-app",
         appName: "Demo App",
         skipGitInit: false,
+        overwrite: false,
       },
       {
         resolveRelease: async () => ({
@@ -221,6 +369,7 @@ describe("createPlancyApp", () => {
         packageName: "demo-app",
         appName: "Demo App",
         skipGitInit: false,
+        overwrite: false,
       },
       {
         resolveRelease: async () => ({
@@ -267,6 +416,7 @@ describe("createPlancyApp", () => {
           packageName: "demo-app",
           appName: "Demo App",
           skipGitInit: false,
+          overwrite: false,
         },
         {
           resolveRelease: async () => ({
@@ -429,6 +579,7 @@ describe("runCli", () => {
       packageName: "demo-package",
       appName: "Demo App",
       skipGitInit: true,
+      overwrite: false,
     });
   });
 
@@ -457,6 +608,7 @@ describe("runCli", () => {
       packageName: "demo-app",
       appName: "--Demo App",
       skipGitInit: false,
+      overwrite: false,
     });
   });
 
@@ -481,6 +633,7 @@ describe("runCli", () => {
       packageName: "@scope/app",
       appName: "App",
       skipGitInit: false,
+      overwrite: false,
     });
   });
 
@@ -502,6 +655,7 @@ describe("runCli", () => {
       packageName: "demo-app",
       appName: "Demo App",
       skipGitInit: false,
+      overwrite: false,
     });
   });
 
@@ -539,5 +693,36 @@ describe("runCli", () => {
     expect(
       await readFile(path.join(workspaceRoot, "demo-app", "package.json"), "utf8"),
     ).toContain('"name":"demo-app"');
+  });
+
+  it("prints a plain error and exits cleanly when a non-interactive target directory is non-empty", async () => {
+    const workspaceRoot = await createTempDirectory("run-cli-non-empty-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    const stderr = createBuffer();
+
+    await writeStarterTemplate(extractedDirectory, { defaultGitInit: false });
+    await mkdir(targetDirectory, { recursive: true });
+    await writeFile(path.join(targetDirectory, "keep.txt"), "existing content\n");
+
+    const exitCode = await runCli(["demo-app"], {
+      cwd: workspaceRoot,
+      interactive: false,
+      stderr: stderr.stream,
+      resolveRelease: async () => ({
+        assetName: "starter-web-v1.2.3.tar.gz",
+        downloadUrl: "https://example.com/starter-web-v1.2.3.tar.gz",
+        tagName: "v1.2.3",
+        templateVersion: "1.2.3",
+      }),
+      downloadTemplate: async () => ({
+        extractedDirectory,
+        cleanup: async () => undefined,
+      }),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderr.output).toContain("Target directory");
+    expect(stderr.output).not.toContain("at ensureTargetDirectoryState");
   });
 });

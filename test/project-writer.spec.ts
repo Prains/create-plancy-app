@@ -106,6 +106,84 @@ describe("writeProject", () => {
     expect(await listEntries(workspaceRoot)).toEqual(["demo-app", "starter"]);
   });
 
+  it("replaces an existing non-empty target directory when overwrite is enabled", async () => {
+    const workspaceRoot = await createTempDirectory("project-writer-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+
+    await writeTemplateFiles(extractedDirectory, {
+      "package.json": `{"name":"${PACKAGE_NAME_TOKEN}"}`,
+      "README.md": `${APP_NAME_TOKEN}\n`,
+      "src/app.txt": `${APP_NAME_TOKEN}\n`,
+      ".env.example": "DATABASE_URL=file:dev.db\n",
+    });
+    await writeTemplateFiles(targetDirectory, {
+      "keep.txt": "existing content\n",
+    });
+
+    await writeProject({
+      extractedDirectory,
+      targetDirectory,
+      manifest: createManifest(),
+      packageName: "demo-app",
+      appName: "Demo App",
+      overwrite: true,
+    });
+
+    expect(await pathExists(path.join(targetDirectory, "keep.txt"))).toBe(false);
+    expect(await readFile(path.join(targetDirectory, "README.md"), "utf8")).toBe(
+      "Demo App\n",
+    );
+  });
+
+  it("restores the previous target directory when overwrite publish fails", async () => {
+    const workspaceRoot = await createTempDirectory("project-writer-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    let renameToTargetAttempted = false;
+
+    await writeTemplateFiles(extractedDirectory, {
+      "package.json": `{"name":"${PACKAGE_NAME_TOKEN}"}`,
+      "README.md": `${APP_NAME_TOKEN}\n`,
+      "src/app.txt": `${APP_NAME_TOKEN}\n`,
+      ".env.example": "DATABASE_URL=file:dev.db\n",
+    });
+    await writeTemplateFiles(targetDirectory, {
+      "keep.txt": "existing content\n",
+    });
+
+    await expect(
+      writeProject(
+        {
+          extractedDirectory,
+          targetDirectory,
+          manifest: createManifest(),
+          packageName: "demo-app",
+          appName: "Demo App",
+          overwrite: true,
+        },
+        {
+          rename: async (sourcePath, destinationPath) => {
+            if (
+              sourcePath.includes(".staging-") &&
+              destinationPath === targetDirectory
+            ) {
+              renameToTargetAttempted = true;
+              throw new Error("publish failed");
+            }
+
+            await rename(sourcePath, destinationPath);
+          },
+        },
+      ),
+    ).rejects.toThrow("publish failed");
+
+    expect(renameToTargetAttempted).toBe(true);
+    expect(await readFile(path.join(targetDirectory, "keep.txt"), "utf8")).toBe(
+      "existing content\n",
+    );
+  });
+
   it("skips .env creation cleanly when copyEnvExampleToEnv is false", async () => {
     const workspaceRoot = await createTempDirectory("project-writer-");
     const extractedDirectory = path.join(workspaceRoot, "starter");

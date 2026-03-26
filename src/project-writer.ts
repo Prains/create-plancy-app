@@ -18,9 +18,10 @@ export type WriteProjectInput = {
   manifest: TemplateManifest;
   packageName: string;
   appName: string;
+  overwrite?: boolean;
 };
 
-type TargetDirectoryMode = "missing" | "existing-empty";
+type TargetDirectoryMode = "missing" | "existing-empty" | "existing-non-empty";
 
 type CopyDirectory = (
   sourcePath: string,
@@ -84,13 +85,7 @@ async function ensureTargetDirectoryState(
 
     const existingEntries = await readdir(targetDirectory);
 
-    if (existingEntries.length > 0) {
-      throw new Error(
-        `Target directory ${targetDirectory} must be empty before scaffolding`,
-      );
-    }
-
-    return "existing-empty";
+    return existingEntries.length > 0 ? "existing-non-empty" : "existing-empty";
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return "missing";
@@ -252,6 +247,12 @@ export async function writeProject(
   const targetMode = await ensureTargetDirectoryState(input.targetDirectory);
   const targetParentDirectory = path.dirname(path.resolve(input.targetDirectory));
 
+  if (targetMode === "existing-non-empty" && !input.overwrite) {
+    throw new Error(
+      `Target directory ${input.targetDirectory} must be empty before scaffolding`,
+    );
+  }
+
   await mkdir(targetParentDirectory, { recursive: true });
 
   const stagingDirectory = await mkdtemp(createStagingPrefix(input.targetDirectory));
@@ -278,14 +279,6 @@ export async function writeProject(
     if (targetMode === "missing") {
       await renamePath(stagingDirectory, input.targetDirectory);
       return;
-    }
-
-    const existingTargetEntries = await readdir(input.targetDirectory);
-
-    if (existingTargetEntries.length > 0) {
-      throw new Error(
-        `Target directory ${input.targetDirectory} must remain empty before scaffolding`,
-      );
     }
 
     const backupDirectory = await mkdtemp(

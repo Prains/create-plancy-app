@@ -14,7 +14,7 @@ Scaffold into the current directory:
 bun create plancy-app .
 ```
 
-The target directory must not exist yet, or it must already exist and be empty.
+If the target directory already exists and is non-empty, the CLI asks before replacing its contents when running in an interactive terminal. In non-interactive mode, non-empty directories still fail fast.
 
 Supported flags:
 

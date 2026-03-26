@@ -14,6 +14,7 @@ type ParsedCliArgs = {
 
 type WriteTarget = {
   write(chunk: string): boolean;
+  isTTY?: boolean;
 };
 
 export type CliDependencies = CreateAppDependencies & {
@@ -105,13 +106,19 @@ export async function runCli(
 
     return 0;
   } catch (error) {
-    if (!isCliError(error)) {
+    if (isCliError(error)) {
+      stderr.write(`${error.message}\n`);
+
+      return error.exitCode;
+    }
+
+    if (!(error instanceof Error)) {
       throw error;
     }
 
     stderr.write(`${error.message}\n`);
 
-    return error.exitCode;
+    return 1;
   }
 }
 
