@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "templateVersion": "0.1.0",
+  "packageNameToken": "__PACKAGE__",
+  "appNameToken": "__APP__",
+  "packageNameFiles": ["package.json"],
+  "appNameFiles": ["README.md", "app/app.config.ts"],
+  "copyEnvExampleToEnv": true,
+  "defaultGitInit": true
+}
