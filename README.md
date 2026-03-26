@@ -51,9 +51,7 @@ The CLI prints this exact block after scaffolding succeeds:
 
 ```text
 bun install
-# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env
-# configure SMTP_* only if AUTH_EMAIL_MODE=smtp
+# set DATABASE_URL in .env
 bunx prisma migrate dev
-bunx prisma db seed
 bun run dev
 ```

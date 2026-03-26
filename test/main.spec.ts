@@ -161,7 +161,7 @@ describe("createPlancyApp", () => {
     expect(tryInitGit).not.toHaveBeenCalled();
     expect(stderr.output).toBe("");
     expect(stdout.output).toBe(
-      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+      "bun install\n# set DATABASE_URL in .env\nbunx prisma migrate dev\nbun run dev\n",
     );
   });
 
@@ -202,7 +202,7 @@ describe("createPlancyApp", () => {
     expect(tryInitGit).not.toHaveBeenCalled();
     expect(stderr.output).toBe("");
     expect(stdout.output).toBe(
-      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+      "bun install\n# set DATABASE_URL in .env\nbunx prisma migrate dev\nbun run dev\n",
     );
   });
 
@@ -247,7 +247,7 @@ describe("createPlancyApp", () => {
     );
     expect(stderr.output).toBe("Warning: git init failed\n");
     expect(stdout.output).toBe(
-      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+      "bun install\n# set DATABASE_URL in .env\nbunx prisma migrate dev\nbun run dev\n",
     );
   });
 
@@ -292,7 +292,7 @@ describe("createPlancyApp", () => {
     );
     expect(stderr.output).toBe("");
     expect(stdout.output).toBe(
-      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+      "bun install\n# set DATABASE_URL in .env\nbunx prisma migrate dev\nbun run dev\n",
     );
   });
 
@@ -337,7 +337,7 @@ describe("createPlancyApp", () => {
     expect(cleanup).toHaveBeenCalledTimes(1);
     expect(stderr.output).toBe("");
     expect(stdout.output).toBe(
-      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+      "bun install\n# set DATABASE_URL in .env\nbunx prisma migrate dev\nbun run dev\n",
     );
   });
 
@@ -534,7 +534,7 @@ describe("runCli", () => {
     expect(exitCode).toBe(0);
     expect(stderr.output).toBe("");
     expect(stdout.output).toBe(
-      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+      "bun install\n# set DATABASE_URL in .env\nbunx prisma migrate dev\nbun run dev\n",
     );
     expect(
       await readFile(path.join(workspaceRoot, "demo-app", "package.json"), "utf8"),

@@ -60,7 +60,7 @@ export type CreateAppDependencies = CreatePlancyAppDependencies & {
 
 export const USAGE_MESSAGE = "Usage: bun create plancy-app <directory>";
 export const SUCCESS_NEXT_STEPS_BLOCK =
-  "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n";
+  "bun install\n# set DATABASE_URL in .env\nbunx prisma migrate dev\nbun run dev\n";
 
 function assertTemplateVersionsMatch(
   release: ResolvedTemplateRelease,
