@@ -5,8 +5,10 @@ import {
   downloadTemplateArchive,
   type DownloadedTemplateArchive,
 } from "./download-template";
-import { InvalidArgumentsError, UnimplementedCliError } from "./errors";
+import { InvalidArgumentsError } from "./errors";
+import { tryInitGit, type TryInitGitResult } from "./git";
 import { deriveAppName, derivePackageName } from "./name-derivation";
+import { writeProject, type WriteProjectInput } from "./project-writer";
 import {
   resolveTemplateRelease,
   type ResolvedTemplateRelease,
@@ -24,6 +26,10 @@ export type CreateAppInput = {
   skipGitInit: boolean;
 };
 
+export type WriteTarget = {
+  write(chunk: string): boolean;
+};
+
 export type RunCreateAppOptions = {
   directory?: string;
   cwd: string;
@@ -34,31 +40,27 @@ export type RunCreateAppOptions = {
   skipGitInit?: boolean;
 };
 
-export type CreateAppDependencies = {
-  promptForDirectory?: () => Promise<string>;
-  createApp?: (input: CreateAppInput) => Promise<void>;
-};
-
 export type CreatePlancyAppDependencies = {
-  createTargetDirectory?: (targetDirectory: string) => Promise<void>;
   downloadTemplate?: (
     release: ResolvedTemplateRelease,
   ) => Promise<DownloadedTemplateArchive>;
   resolveRelease?: (
     templateVersion?: string,
   ) => Promise<ResolvedTemplateRelease>;
+  stderr?: WriteTarget;
+  stdout?: WriteTarget;
+  tryInitGit?: (directory: string) => Promise<TryInitGitResult>;
+  writeProject?: (input: WriteProjectInput) => Promise<void>;
 };
 
-export type PreparedTemplate = {
-  cleanup: () => Promise<void>;
-  extractedDirectory: string;
-  manifest: TemplateManifest;
-  release: ResolvedTemplateRelease;
+export type CreateAppDependencies = CreatePlancyAppDependencies & {
+  promptForDirectory?: () => Promise<string>;
+  createApp?: (input: CreateAppInput) => Promise<void>;
 };
 
 export const USAGE_MESSAGE = "Usage: bun create plancy-app <directory>";
-export const UNIMPLEMENTED_CREATE_FLOW_MESSAGE =
-  "CLI create flow is not implemented yet.";
+export const SUCCESS_NEXT_STEPS_BLOCK =
+  "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n";
 
 function assertTemplateVersionsMatch(
   release: ResolvedTemplateRelease,
@@ -95,7 +97,7 @@ function resolveTargetDirectory(directory: string, cwd: string): string {
 export async function createPlancyApp(
   input: CreateAppInput,
   dependencies: CreatePlancyAppDependencies = {},
-): Promise<PreparedTemplate> {
+): Promise<void> {
   const resolveRelease =
     dependencies.resolveRelease ??
     ((templateVersion?: string) => resolveTemplateRelease({ templateVersion }));
@@ -106,31 +108,64 @@ export async function createPlancyApp(
         assetName: release.assetName,
         downloadUrl: release.downloadUrl,
       }));
-  const createTargetDirectory =
-    dependencies.createTargetDirectory ??
-    (async () => {
-      throw new UnimplementedCliError(UNIMPLEMENTED_CREATE_FLOW_MESSAGE);
-    });
+  const writeProjectToDisk = dependencies.writeProject ?? writeProject;
+  const tryInitGitInDirectory = dependencies.tryInitGit ?? tryInitGit;
+  const stdout = dependencies.stdout ?? process.stdout;
+  const stderr = dependencies.stderr ?? process.stderr;
 
   const release = await resolveRelease(input.templateVersion);
   const downloadedTemplate = await downloadTemplate(release);
+  let cleanedUp = false;
+
+  async function cleanupDownloadedTemplate(): Promise<void> {
+    if (cleanedUp) {
+      return;
+    }
+
+    cleanedUp = true;
+    await downloadedTemplate.cleanup();
+  }
 
   try {
     const manifest = await loadTemplateManifest(downloadedTemplate.extractedDirectory);
 
     assertTemplateVersionsMatch(release, manifest);
 
-    await createTargetDirectory(input.targetDirectory);
-
-    return {
-      release,
-      manifest,
+    await writeProjectToDisk({
       extractedDirectory: downloadedTemplate.extractedDirectory,
-      cleanup: downloadedTemplate.cleanup,
-    };
+      targetDirectory: input.targetDirectory,
+      manifest,
+      packageName: input.packageName ?? derivePackageName(input.targetDirectory),
+      appName:
+        input.appName ??
+        deriveAppName(
+          input.packageName ?? derivePackageName(input.targetDirectory),
+        ),
+    });
+
+    if (!input.skipGitInit && manifest.defaultGitInit) {
+      const gitResult = await tryInitGitInDirectory(input.targetDirectory);
+
+      if (!gitResult.ok) {
+        stderr.write(`Warning: ${gitResult.error}\n`);
+      }
+    }
+
+    stdout.write(SUCCESS_NEXT_STEPS_BLOCK);
   } catch (error) {
-    await downloadedTemplate.cleanup();
+    try {
+      await cleanupDownloadedTemplate();
+    } catch {
+      // Preserve the original scaffolding error.
+    }
+
     throw error;
+  }
+
+  try {
+    await cleanupDownloadedTemplate();
+  } catch {
+    // The project is already scaffolded successfully. Ignore temp cleanup failures.
   }
 }
 
@@ -141,10 +176,7 @@ export async function runCreateApp(
   const promptForDirectory =
     dependencies.promptForDirectory ?? promptForDirectoryFromStdin;
   const createApp =
-    dependencies.createApp ??
-    (async () => {
-      throw new UnimplementedCliError(UNIMPLEMENTED_CREATE_FLOW_MESSAGE);
-    });
+    dependencies.createApp ?? ((input: CreateAppInput) => createPlancyApp(input, dependencies));
 
   let directory = options.directory;
 

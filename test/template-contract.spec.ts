@@ -54,7 +54,7 @@ describe("template manifest contract", () => {
 
   it("missing starter.manifest.json fails before target creation", async () => {
     const extractedDirectory = await createExtractedDirectory();
-    const createTargetDirectory = vi.fn(async () => undefined);
+    const writeProject = vi.fn(async () => undefined);
     const cleanup = vi.fn(async () => undefined);
 
     await expect(
@@ -76,18 +76,18 @@ describe("template manifest contract", () => {
             extractedDirectory,
             cleanup,
           })),
-          createTargetDirectory,
+          writeProject,
         },
       ),
     ).rejects.toThrow(/starter\.manifest\.json/i);
 
-    expect(createTargetDirectory).not.toHaveBeenCalled();
+    expect(writeProject).not.toHaveBeenCalled();
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
   it("unsupported schemaVersion fails before target creation", async () => {
     const extractedDirectory = await createExtractedDirectory();
-    const createTargetDirectory = vi.fn(async () => undefined);
+    const writeProject = vi.fn(async () => undefined);
     const cleanup = vi.fn(async () => undefined);
 
     await writeManifestFixture(extractedDirectory, unsupportedFixture);
@@ -111,12 +111,12 @@ describe("template manifest contract", () => {
             extractedDirectory,
             cleanup,
           })),
-          createTargetDirectory,
+          writeProject,
         },
       ),
     ).rejects.toThrow(/unsupported schema version/i);
 
-    expect(createTargetDirectory).not.toHaveBeenCalled();
+    expect(writeProject).not.toHaveBeenCalled();
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
@@ -129,7 +129,7 @@ describe("template manifest contract", () => {
 
     for (const fixture of fixtures) {
       const extractedDirectory = await createExtractedDirectory();
-      const createTargetDirectory = vi.fn(async () => undefined);
+      const writeProject = vi.fn(async () => undefined);
       const cleanup = vi.fn(async () => undefined);
 
       await writeManifestFixture(extractedDirectory, fixture);
@@ -153,19 +153,19 @@ describe("template manifest contract", () => {
               extractedDirectory,
               cleanup,
             })),
-            createTargetDirectory,
+            writeProject,
           },
         ),
       ).rejects.toThrow(/templateVersion|packageNameToken|appNameToken|Files/i);
 
-      expect(createTargetDirectory).not.toHaveBeenCalled();
+      expect(writeProject).not.toHaveBeenCalled();
       expect(cleanup).toHaveBeenCalledTimes(1);
     }
   });
 
   it("invalid copyEnvExampleToEnv or defaultGitInit values fail before target creation", async () => {
     const extractedDirectory = await createExtractedDirectory();
-    const createTargetDirectory = vi.fn(async () => undefined);
+    const writeProject = vi.fn(async () => undefined);
     const cleanup = vi.fn(async () => undefined);
 
     await writeManifestFixture(extractedDirectory, invalidFlagsFixture);
@@ -189,12 +189,12 @@ describe("template manifest contract", () => {
             extractedDirectory,
             cleanup,
           })),
-          createTargetDirectory,
+          writeProject,
         },
       ),
     ).rejects.toThrow(/copyEnvExampleToEnv|defaultGitInit/i);
 
-    expect(createTargetDirectory).not.toHaveBeenCalled();
+    expect(writeProject).not.toHaveBeenCalled();
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
@@ -215,7 +215,7 @@ describe("template manifest contract", () => {
 
   it("manifest-listed files must exist before target creation", async () => {
     const extractedDirectory = await createExtractedDirectory();
-    const createTargetDirectory = vi.fn(async () => undefined);
+    const writeProject = vi.fn(async () => undefined);
     const cleanup = vi.fn(async () => undefined);
 
     await writeManifestFixture(extractedDirectory, validFixture);
@@ -239,12 +239,12 @@ describe("template manifest contract", () => {
             extractedDirectory,
             cleanup,
           })),
-          createTargetDirectory,
+          writeProject,
         },
       ),
-    ).rejects.toThrow(/manifest-listed file.*package\.json/i);
+    ).rejects.toThrow(/manifest-listed file.*does not exist/i);
 
-    expect(createTargetDirectory).not.toHaveBeenCalled();
+    expect(writeProject).not.toHaveBeenCalled();
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
@@ -272,7 +272,7 @@ describe("template manifest contract", () => {
 
   it("manifest templateVersion must match the resolved release version", async () => {
     const extractedDirectory = await createExtractedDirectory();
-    const createTargetDirectory = vi.fn(async () => undefined);
+    const writeProject = vi.fn(async () => undefined);
     const cleanup = vi.fn(async () => undefined);
 
     await writeManifestFixture(extractedDirectory, {
@@ -307,12 +307,12 @@ describe("template manifest contract", () => {
             extractedDirectory,
             cleanup,
           })),
-          createTargetDirectory,
+          writeProject,
         },
       ),
     ).rejects.toThrow(/templateVersion.*1\.2\.3.*9\.9\.9/i);
 
-    expect(createTargetDirectory).not.toHaveBeenCalled();
+    expect(writeProject).not.toHaveBeenCalled();
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 });

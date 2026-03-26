@@ -20,6 +20,7 @@ export type CliDependencies = CreateAppDependencies & {
   cwd?: string;
   interactive?: boolean;
   stderr?: WriteTarget;
+  stdout?: WriteTarget;
 };
 
 function requireValue(argv: string[], index: number, flag: string): string {

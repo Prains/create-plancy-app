@@ -1,10 +1,31 @@
-import { describe, expect, it, vi } from "vitest";
+import os from "node:os";
+import path from "node:path";
+import {
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+  mkdir,
+} from "node:fs/promises";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCli } from "../src/cli";
-import { runCreateApp } from "../src/main";
+import { runCreateApp, createPlancyApp } from "../src/main";
 
 type WriteTarget = {
   write(chunk: string): boolean;
 };
+
+const tempDirectories: string[] = [];
+
+async function createTempDirectory(prefix: string): Promise<string> {
+  const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
+  tempDirectories.push(directory);
+  return directory;
+}
+
+afterEach(async () => {
+  await Promise.all(tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+});
 
 function createBuffer(): { output: string; stream: WriteTarget } {
   let output = "";
@@ -21,6 +42,34 @@ function createBuffer(): { output: string; stream: WriteTarget } {
       },
     },
   };
+}
+
+async function writeStarterTemplate(
+  extractedDirectory: string,
+  overrides: Partial<{
+    copyEnvExampleToEnv: boolean;
+    defaultGitInit: boolean;
+  }> = {},
+): Promise<void> {
+  await mkdir(extractedDirectory, { recursive: true });
+  await writeFile(
+    path.join(extractedDirectory, "starter.manifest.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      templateVersion: "1.2.3",
+      packageNameToken: "__PACKAGE_NAME__",
+      appNameToken: "__APP_NAME__",
+      packageNameFiles: ["package.json"],
+      appNameFiles: ["README.md"],
+      copyEnvExampleToEnv: overrides.copyEnvExampleToEnv ?? false,
+      defaultGitInit: overrides.defaultGitInit ?? true,
+    }),
+  );
+  await writeFile(
+    path.join(extractedDirectory, "package.json"),
+    '{"name":"__PACKAGE_NAME__"}',
+  );
+  await writeFile(path.join(extractedDirectory, "README.md"), "__APP_NAME__\n");
 }
 
 describe("runCreateApp", () => {
@@ -71,6 +120,264 @@ describe("runCreateApp", () => {
       appName: "Plancy Demo",
       skipGitInit: false,
     });
+  });
+});
+
+describe("createPlancyApp", () => {
+  it("skips git initialization when --skip-git-init is set", async () => {
+    const workspaceRoot = await createTempDirectory("main-flow-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const tryInitGit = vi.fn(async () => ({ ok: true as const }));
+
+    await writeStarterTemplate(extractedDirectory, { defaultGitInit: true });
+
+    await createPlancyApp(
+      {
+        targetDirectory,
+        packageName: "demo-app",
+        appName: "Demo App",
+        skipGitInit: true,
+      },
+      {
+        resolveRelease: async () => ({
+          assetName: "starter-web-v1.2.3.tar.gz",
+          downloadUrl: "https://example.com/starter-web-v1.2.3.tar.gz",
+          tagName: "v1.2.3",
+          templateVersion: "1.2.3",
+        }),
+        downloadTemplate: async () => ({
+          extractedDirectory,
+          cleanup: async () => undefined,
+        }),
+        tryInitGit,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      },
+    );
+
+    expect(tryInitGit).not.toHaveBeenCalled();
+    expect(stderr.output).toBe("");
+    expect(stdout.output).toBe(
+      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+    );
+  });
+
+  it("skips git initialization when the manifest disables it by default", async () => {
+    const workspaceRoot = await createTempDirectory("main-flow-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    const tryInitGit = vi.fn(async () => ({ ok: true as const }));
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
+    await writeStarterTemplate(extractedDirectory, { defaultGitInit: false });
+
+    await createPlancyApp(
+      {
+        targetDirectory,
+        packageName: "demo-app",
+        appName: "Demo App",
+        skipGitInit: false,
+      },
+      {
+        resolveRelease: async () => ({
+          assetName: "starter-web-v1.2.3.tar.gz",
+          downloadUrl: "https://example.com/starter-web-v1.2.3.tar.gz",
+          tagName: "v1.2.3",
+          templateVersion: "1.2.3",
+        }),
+        downloadTemplate: async () => ({
+          extractedDirectory,
+          cleanup: async () => undefined,
+        }),
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        tryInitGit,
+      },
+    );
+
+    expect(tryInitGit).not.toHaveBeenCalled();
+    expect(stderr.output).toBe("");
+    expect(stdout.output).toBe(
+      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+    );
+  });
+
+  it("warns on git init failure without rolling back the scaffolded project", async () => {
+    const workspaceRoot = await createTempDirectory("main-flow-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
+    await writeStarterTemplate(extractedDirectory, { defaultGitInit: true });
+
+    await createPlancyApp(
+      {
+        targetDirectory,
+        packageName: "demo-app",
+        appName: "Demo App",
+        skipGitInit: false,
+      },
+      {
+        resolveRelease: async () => ({
+          assetName: "starter-web-v1.2.3.tar.gz",
+          downloadUrl: "https://example.com/starter-web-v1.2.3.tar.gz",
+          tagName: "v1.2.3",
+          templateVersion: "1.2.3",
+        }),
+        downloadTemplate: async () => ({
+          extractedDirectory,
+          cleanup: async () => undefined,
+        }),
+        tryInitGit: async () => ({
+          ok: false as const,
+          error: "git init failed",
+        }),
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      },
+    );
+
+    expect(await readFile(path.join(targetDirectory, "package.json"), "utf8")).toContain(
+      '"name":"demo-app"',
+    );
+    expect(stderr.output).toBe("Warning: git init failed\n");
+    expect(stdout.output).toBe(
+      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+    );
+  });
+
+  it("ignores downloaded-template cleanup failures after a successful scaffold", async () => {
+    const workspaceRoot = await createTempDirectory("main-flow-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
+    await writeStarterTemplate(extractedDirectory, { defaultGitInit: false });
+
+    await expect(
+      createPlancyApp(
+        {
+          targetDirectory,
+          packageName: "demo-app",
+          appName: "Demo App",
+          skipGitInit: false,
+        },
+        {
+          resolveRelease: async () => ({
+            assetName: "starter-web-v1.2.3.tar.gz",
+            downloadUrl: "https://example.com/starter-web-v1.2.3.tar.gz",
+            tagName: "v1.2.3",
+            templateVersion: "1.2.3",
+          }),
+          downloadTemplate: async () => ({
+            extractedDirectory,
+            cleanup: async () => {
+              throw new Error("cleanup failed");
+            },
+          }),
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+        },
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(await readFile(path.join(targetDirectory, "package.json"), "utf8")).toContain(
+      '"name":"demo-app"',
+    );
+    expect(stderr.output).toBe("");
+    expect(stdout.output).toBe(
+      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+    );
+  });
+
+  it("applies derived names through the default main flow", async () => {
+    const workspaceRoot = await createTempDirectory("main-flow-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+    const cleanup = vi.fn(async () => undefined);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
+    await writeStarterTemplate(extractedDirectory, { defaultGitInit: false });
+
+    await runCreateApp(
+      {
+        directory: "demo-app",
+        cwd: workspaceRoot,
+        interactive: false,
+      },
+      {
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        resolveRelease: async () => ({
+          assetName: "starter-web-v1.2.3.tar.gz",
+          downloadUrl: "https://example.com/starter-web-v1.2.3.tar.gz",
+          tagName: "v1.2.3",
+          templateVersion: "1.2.3",
+        }),
+        downloadTemplate: async () => ({
+          extractedDirectory,
+          cleanup,
+        }),
+      },
+    );
+
+    expect(await readFile(path.join(targetDirectory, "package.json"), "utf8")).toContain(
+      '"name":"demo-app"',
+    );
+    expect(await readFile(path.join(targetDirectory, "README.md"), "utf8")).toBe(
+      "Demo App\n",
+    );
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(stderr.output).toBe("");
+    expect(stdout.output).toBe(
+      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+    );
+  });
+
+  it("applies explicit package and app name overrides through the default main flow", async () => {
+    const workspaceRoot = await createTempDirectory("main-flow-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const targetDirectory = path.join(workspaceRoot, "demo-app");
+
+    await writeStarterTemplate(extractedDirectory, { defaultGitInit: false });
+
+    await runCreateApp(
+      {
+        directory: "demo-app",
+        cwd: workspaceRoot,
+        interactive: false,
+        packageName: "@scope/custom-name",
+        appName: "Custom Display Name",
+      },
+      {
+        stdout: createBuffer().stream,
+        stderr: createBuffer().stream,
+        resolveRelease: async () => ({
+          assetName: "starter-web-v1.2.3.tar.gz",
+          downloadUrl: "https://example.com/starter-web-v1.2.3.tar.gz",
+          tagName: "v1.2.3",
+          templateVersion: "1.2.3",
+        }),
+        downloadTemplate: async () => ({
+          extractedDirectory,
+          cleanup: async () => undefined,
+        }),
+      },
+    );
+
+    expect(await readFile(path.join(targetDirectory, "package.json"), "utf8")).toContain(
+      '"name":"@scope/custom-name"',
+    );
+    expect(await readFile(path.join(targetDirectory, "README.md"), "utf8")).toBe(
+      "Custom Display Name\n",
+    );
   });
 });
 
@@ -198,17 +505,39 @@ describe("runCli", () => {
     });
   });
 
-  it("fails explicitly when no create flow implementation is wired", async () => {
+  it("uses the implemented create flow when no explicit createApp override is provided", async () => {
+    const workspaceRoot = await createTempDirectory("run-cli-");
+    const extractedDirectory = path.join(workspaceRoot, "starter");
+    const stdout = createBuffer();
     const stderr = createBuffer();
 
+    await writeStarterTemplate(extractedDirectory, { defaultGitInit: false });
+
     const exitCode = await runCli(["demo-app"], {
-      cwd: "/workspace/current",
+      cwd: workspaceRoot,
       interactive: false,
+      stdout: stdout.stream,
       stderr: stderr.stream,
       promptForDirectory: vi.fn(),
+      resolveRelease: async () => ({
+        assetName: "starter-web-v1.2.3.tar.gz",
+        downloadUrl: "https://example.com/starter-web-v1.2.3.tar.gz",
+        tagName: "v1.2.3",
+        templateVersion: "1.2.3",
+      }),
+      downloadTemplate: async () => ({
+        extractedDirectory,
+        cleanup: async () => undefined,
+      }),
     });
 
-    expect(exitCode).toBe(1);
-    expect(stderr.output).toContain("CLI create flow is not implemented");
+    expect(exitCode).toBe(0);
+    expect(stderr.output).toBe("");
+    expect(stdout.output).toBe(
+      "bun install\n# fill DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, AUTH_EMAIL_MODE in .env\n# configure SMTP_* only if AUTH_EMAIL_MODE=smtp\nbunx prisma migrate dev\nbunx prisma db seed\nbun run dev\n",
+    );
+    expect(
+      await readFile(path.join(workspaceRoot, "demo-app", "package.json"), "utf8"),
+    ).toContain('"name":"demo-app"');
   });
 });
