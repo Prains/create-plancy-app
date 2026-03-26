@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "create-plancy-app": "./src/cli.ts"
+    "create-plancy-app": "bin/create-plancy-app"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Prains/create-plancy-app.git"
+    "url": "git+https://github.com/Prains/create-plancy-app.git"
   },
   "scripts": {
     "test": "vitest run",
