@@ -1,10 +1,13 @@
 {
   "name": "create-plancy-app",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "bin": {
     "create-plancy-app": "./src/cli.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Prains/create-plancy-app.git"
   },
   "scripts": {
     "test": "vitest run",

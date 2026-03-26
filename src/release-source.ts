@@ -31,7 +31,7 @@ export type ResolveTemplateReleaseOptions = {
 };
 
 export const DEFAULT_RELEASES_API_URL =
-  "https://api.github.com/repos/plancy/starter-web/releases";
+  "https://api.github.com/repos/Prains/starter-web/releases";
 
 function parseReleaseTimestamp(release: GitHubRelease): number {
   const timestamp = release.published_at ?? release.created_at;
